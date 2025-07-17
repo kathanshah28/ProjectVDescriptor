@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Live Scene Descriptor</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: #111;
+        }
+        #video-container {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #video-stream {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 50px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        #audio-toggle {
+            font-size: 28px;
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 5px 15px;
+        }
+        #status-light {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #f44336; /* Red */
+            margin-right: 10px;
+            transition: background-color 0.5s;
+        }
+        #status-light.active {
+            background-color: #4CAF50; /* Green */
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="video-container">
+            <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Live video feed">
+        </div>
+        <div class="controls">
+            <div id="status-light"></div>
+            <button id="audio-toggle" title="Toggle Audio">🔇</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const audioToggleButton = document.getElementById('audio-toggle');
+            const statusLight = document.getElementById('status-light');
+            const synth = window.speechSynthesis;
+
+            let isAudioEnabled = false;
+            let lastSpokenCaption = "Initializing system...";
+
+            // Function to handle user interaction for enabling audio
+            const enableAudio = () => {
+                isAudioEnabled = !isAudioEnabled;
+                audioToggleButton.textContent = isAudioEnabled ? '🔊' : '🔇';
+                if (!isAudioEnabled && synth.speaking) {
+                    synth.cancel(); // Stop any current speech
+                }
+                // A trick to "wake up" the speech synthesis engine on some mobile browsers
+                if (isAudioEnabled && synth.getVoices().length === 0) {
+                    synth.onvoiceschanged = () => {};
+                }
+            };
+            
+            audioToggleButton.addEventListener('click', enableAudio);
+
+            // Fetch the latest caption and speak it if needed
+            async function fetchAndSpeakCaption() {
+                try {
+                    const response = await fetch('/get_caption');
+                    const data = await response.json();
+                    const newCaption = data.caption;
+
+                    // Update status light to green if we get a valid caption
+                    if (newCaption && newCaption !== "Initializing system...") {
+                        statusLight.classList.add('active');
+                    }
+
+                    // Speak only if audio is on and the caption is new
+                    if (isAudioEnabled && newCaption && newCaption !== lastSpokenCaption) {
+                        console.log(`Speaking: ${newCaption}`);
+                        lastSpokenCaption = newCaption;
+                        
+                        // Cancel previous speech to avoid overlap
+                        if (synth.speaking) {
+                            synth.cancel();
+                        }
+                        
+                        const utterance = new SpeechSynthesisUtterance(newCaption);
+                        synth.speak(utterance);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch caption:', error);
+                    statusLight.classList.remove('active');
+                }
+            }
+            
+            // Poll for new captions every 3 seconds
+            setInterval(fetchAndSpeakCaption, 3000);
+        });
+    </script>
+</body>
+</html>
