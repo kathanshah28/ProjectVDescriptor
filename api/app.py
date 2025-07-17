@@ -200,6 +200,10 @@ def get_caption():
         latest = caption_history[-1] if caption_history else ""
     return jsonify(caption=latest)
 
+@app.route('/about')
+def about():
+    return 'about page'
+
 # --- 5. CLEANUP ---
 def cleanup():
     """Gracefully stop all threads and clean up resources."""
@@ -211,6 +215,6 @@ def cleanup():
 
 atexit.register(cleanup)
 
-if __name__ == '__main__':
-    print("🚀 Starting Live Scene Descriptor server...")
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+# if __name__ == '__main__':
+#     print("🚀 Starting Live Scene Descriptor server...")
+#     app.run(host='0.0.0.0', port=5000, threaded=True)
