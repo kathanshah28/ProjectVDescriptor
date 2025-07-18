@@ -50,7 +50,7 @@ def video_processing_worker():
 
             video_file = genai.upload_file(path=filepath)
             while video_file.state.name == "PROCESSING":
-                time.sleep(1)
+                time.sleep(8)
                 video_file = genai.get_file(video_file.name)
                 print(f"DEBUG: File '{os.path.basename(filepath)}' state: {video_file.state.name}, Error: {video_file.error_message if hasattr(video_file, 'error_message') else 'N/A'}")
 
@@ -160,4 +160,4 @@ def cleanup():
 atexit.register(cleanup)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8088, threaded=True)
+    app.run(host='0.0.0.0', port=5173, threaded=True)
