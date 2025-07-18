@@ -106,7 +106,7 @@ def index():
     if 'processing_thread' not in globals() or not processing_thread.is_alive():
         processing_thread = threading.Thread(target=video_processing_worker, daemon=True)
         processing_thread.start()
-    return render_template('indexnew.html')
+    return render_template('index.html')
 
 @app.route('/upload_chunk', methods=['POST'])
 def upload_chunk():
