@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Live Scene Descriptor</title>
+    <style>
+        :root {
+            --background-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-text-color: #e0e0e0;
+            --secondary-text-color: #a0a0a0;
+            --accent-green: #4CAF50;
+            --accent-red: #f44336;
+            --accent-blue: #2196F3;
+        }
+        html, body {
+            margin: 0; padding: 0; height: 100%; overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--background-color); color: var(--primary-text-color);
+        }
+        .app-container {
+            display: flex; flex-direction: column; height: 100%; width: 100%;
+        }
+        #video-container {
+            flex: 1; display: flex; justify-content: center; align-items: center;
+            background-color: #000; min-height: 0; position: relative;
+        }
+        #local-video {
+            max-width: 100%; max-height: 100%; object-fit: contain;
+        }
+        #permission-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.7); display: flex; justify-content: center;
+            align-items: center; text-align: center; padding: 1rem;
+        }
+        #permission-overlay button {
+            font-size: 1.2rem; padding: 0.8rem 1.5rem; background-color: var(--accent-blue);
+            color: white; border: none; border-radius: 8px; cursor: pointer;
+        }
+        #caption-container {
+            flex-shrink: 0; height: 30vh; background-color: var(--surface-color);
+            border-top: 1px solid #333; display: flex; flex-direction: column;
+            padding: 1rem; box-sizing: border-box;
+        }
+        .caption-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.75rem; flex-shrink: 0;
+        }
+        .caption-title {
+            font-weight: 600; font-size: 1.1rem; display: flex; align-items: center;
+        }
+        #status-light {
+            width: 10px; height: 10px; border-radius: 50%;
+            background-color: var(--accent-red); margin-right: 0.5rem; transition: background-color 0.5s;
+        }
+        #status-light.active { background-color: var(--accent-green); }
+        #status-light.processing { background-color: var(--accent-blue); animation: pulse 1.5s infinite; }
+        #audio-toggle {
+            font-size: 24px; background: none; border: none;
+            color: var(--primary-text-color); cursor: pointer; padding: 5px;
+        }
+        #caption-history {
+            flex-grow: 1; overflow-y: auto; line-height: 1.6; font-size: 1rem;
+        }
+        #caption-history p {
+            margin: 0 0 0.75rem 0; color: var(--secondary-text-color); transition: color 0.5s;
+        }
+        #caption-history p:first-child { color: var(--primary-text-color); font-weight: 500; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(33, 150, 243, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div id="video-container">
+            <video id="local-video" autoplay playsinline muted></video>
+            <div id="permission-overlay">
+                <button id="start-button">Start Camera</button>
+            </div>
+        </div>
+        <div id="caption-container">
+            <div class="caption-header">
+                <div class="caption-title">
+                    <div id="status-light"></div>
+                    Live Description
+                </div>
+                <button id="audio-toggle" title="Toggle Audio">🔇</button>
+            </div>
+            <div id="caption-history"><p>Click 'Start Camera' to begin.</p></div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const startButton = document.getElementById('start-button');
+        const permissionOverlay = document.getElementById('permission-overlay');
+        const videoElement = document.getElementById('local-video');
+        const audioToggleButton = document.getElementById('audio-toggle');
+        const statusLight = document.getElementById('status-light');
+        const captionHistoryDiv = document.getElementById('caption-history');
+        const synth = window.speechSynthesis;
+
+        const CHUNK_DURATION_MS = 8000; // 8 seconds
+        let mediaRecorder;
+        let isAudioEnabled = false;
+        let lastSpokenCaption = "";
+
+        // Function to start the camera and recording process
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }, // Prioritize back camera
+                    audio: false
+                });
+                permissionOverlay.style.display = 'none';
+                videoElement.srcObject = stream;
+                
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        uploadChunk(event.data);
+                    }
+                };
+                
+                // Start the recording loop
+                setInterval(() => {
+                    if (mediaRecorder.state === 'inactive') {
+                        mediaRecorder.start(CHUNK_DURATION_MS);
+                    }
+                }, CHUNK_DURATION_MS);
+
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                captionHistoryDiv.innerHTML = `<p>Error: Could not access camera. Please check permissions. ${err.message}</p>`;
+            }
+        }
+
+        async function uploadChunk(chunk) {
+            statusLight.classList.add('processing');
+            const formData = new FormData();
+            formData.append('video-blob', chunk, 'video.webm');
+
+            try {
+                const response = await fetch('/upload_chunk', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                console.log('Upload result:', result);
+            } catch (error) {
+                console.error('Error uploading chunk:', error);
+            } finally {
+                statusLight.classList.remove('processing');
+            }
+        }
+
+        async function updateCaptions() {
+            // ... (This function remains the same as before)
+            try {
+                const response = await fetch('/get_captions');
+                const data = await response.json();
+                const captions = data.captions;
+                
+                if (captions && captions.length > 0) {
+                    statusLight.classList.add('active');
+                    captionHistoryDiv.innerHTML = captions.map(c => `<p>${c}</p>`).join('');
+                    const latestCaption = captions[0];
+                    if (isAudioEnabled && latestCaption && latestCaption !== lastSpokenCaption) {
+                        lastSpokenCaption = latestCaption;
+                        const utterance = new SpeechSynthesisUtterance(latestCaption);
+                        synth.speak(utterance);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch captions:', error);
+                statusLight.classList.remove('active');
+            }
+        }
+        
+        // Event Listeners
+        startButton.addEventListener('click', startCamera);
+        audioToggleButton.addEventListener('click', () => {
+            isAudioEnabled = !isAudioEnabled;
+            audioToggleButton.textContent = isAudioEnabled ? '🔊' : '🔇';
+            if (!isAudioEnabled) synth.cancel();
+        });
+
+        // Start polling for captions from the server
+        setInterval(updateCaptions, 2000);
+    });
+    </script>
+</body>
+</html>
