@@ -52,8 +52,12 @@ def video_processing_worker():
             while video_file.state.name == "PROCESSING":
                 time.sleep(1)
                 video_file = genai.get_file(video_file.name)
+                print(f"DEBUG: File '{os.path.basename(filepath)}' state: {video_file.state.name}, Error: {video_file.error_message if hasattr(video_file, 'error_message') else 'N/A'}")
 
             if video_file.state.name == "FAILED":
+                # IMPROVE THIS LINE:
+                error_detail = video_file.error_message if hasattr(video_file, 'error_message') and video_file.error_message else 'Unknown reason from Gemini API'
+                print(f"🔴 Gemini API: Video processing failed for {os.path.basename(filepath)}. Reason: {error_detail}")
                 raise ValueError("Gemini API: Video processing failed.")
 
             print("🧠 Generating description...")
